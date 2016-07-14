@@ -1,6 +1,7 @@
 import os, sys, ROOT
 from ROOT import RooDataSet, TFile, RooArgSet, RooFit, RooCmdArg, TObject, RooRealVar, \
     TNamed
+from cStringIO import StringIO
 
 def RooDataCacheFactory(attr1, *attrs) :
     # So you can pass a list or tuple of attributes, or strings.
@@ -8,7 +9,8 @@ def RooDataCacheFactory(attr1, *attrs) :
         attrs = tuple(attr1) + attrs
     else :
         attrs = (attr1,) + attrs
-
+    attrs = ('stdout', 'stderr') + attrs
+    
     class RooDataCache(object) :
         '''Cache just about anything in a .root file. Non-ROOT objects are
         repr'd and stored in the title of a TNamed.'''
@@ -57,7 +59,32 @@ def RooDataCacheFactory(attr1, *attrs) :
             localns = dict(locals())
             if self.fileresident :
                 self.datafile = self.get_save_file('update')
-            exec self.initstring in globals(), localns
+            originalstdout = sys.stdout
+            originalstderr = sys.stderr
+            sys.stdout = StringIO()
+            sys.stderr = StringIO()
+            try :
+                exec self.initstring in globals(), localns
+            except :
+                stdout = sys.stdout.getvalue()
+                stderr = sys.stderr.getvalue()
+                sys.stdout.close()
+                sys.stderr.close()
+                sys.stdout = originalstdout
+                sys.stderr = originalstderr
+                print 'Failed to evaluate:'
+                print self.initstring
+                print 'stdout:'
+                print stdout
+                print 'stderr:'
+                print stderr
+                raise
+            localns['stdout'] = sys.stdout.getvalue()
+            localns['stderr'] = sys.stderr.getvalue()
+            sys.stdout.close()
+            sys.stderr.close()
+            sys.stdout = originalstdout
+            sys.stderr = originalstderr
             data = dict((name, localns[name]) for name in self.objnames)
             return data
 
