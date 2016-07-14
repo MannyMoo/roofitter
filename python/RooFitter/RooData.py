@@ -56,7 +56,7 @@ def RooDataCacheFactory(attr1, *attrs) :
         def _init_data(self) :
             localns = dict(locals())
             if self.fileresident :
-                self.datafile = get_save_file('update')
+                self.datafile = self.get_save_file('update')
             exec self.initstring in globals(), localns
             data = dict((name, localns[name]) for name in self.objnames)
             return data
@@ -92,7 +92,7 @@ def RooDataCacheFactory(attr1, *attrs) :
                     except :
                         pass
                 # Make sure that objects normally owned by a TFile are disowned.
-                if if not self.fileresident and savefile.GetList().FindObject(val) \
+                if not self.fileresident and savefile.GetList().FindObject(val) \
                    and hasattr(val, 'SetDirectory') :
                     val.SetDirectory(None)
             if not self.fileresident :
