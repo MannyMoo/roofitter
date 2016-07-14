@@ -1,0 +1,12 @@
+*~
+gangadir
+Hlt
+stripping
+MooreDev*
+data-files
+fits/*.root
+fits/*/*.root
+fits/*/*/*.root
+*.pyc
+\#*
+.#*
