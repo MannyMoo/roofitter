@@ -1,4 +1,4 @@
-import os, sys, ROOT
+import os, sys, ROOT, traceback
 from ROOT import RooDataSet, TFile, RooArgSet, RooFit, RooCmdArg, TObject, RooRealVar, \
     TNamed
 from cStringIO import StringIO
@@ -65,27 +65,33 @@ def RooDataCacheFactory(attr1, *attrs) :
             sys.stderr = StringIO()
             try :
                 exec self.initstring in globals(), localns
-            except :
-                stdout = sys.stdout.getvalue()
-                stderr = sys.stderr.getvalue()
-                sys.stdout.close()
-                sys.stderr.close()
-                sys.stdout = originalstdout
-                sys.stderr = originalstderr
-                print 'Failed to evaluate:'
-                print self.initstring
-                print 'stdout:'
-                print stdout
-                print 'stderr:'
-                print stderr
-                raise
+            except Exception as excpt :
+                pass
             localns['stdout'] = sys.stdout.getvalue()
             localns['stderr'] = sys.stderr.getvalue()
             sys.stdout.close()
             sys.stderr.close()
             sys.stdout = originalstdout
             sys.stderr = originalstderr
-            data = dict((name, localns[name]) for name in self.objnames)
+            if 'excpt' in locals() :
+                if isinstance(excpt, SyntaxError) :
+                    tracebackerror_class = excpt.__class__.__name__
+                    detail = excpt.args[0]
+                    line_number = excpt.lineno
+                else :
+                    error_class = excpt.__class__.__name__
+                    detail = excpt.args[0]
+                    cl, exc, tb = sys.exc_info()
+                    line_number = traceback.extract_tb(tb)[-1][1]
+                msg = 'Failed to evaluate:\n' + self.initstring
+                msg += "\n%s at line %d: %s" % (error_class, line_number, detail)
+                raise excpt.__class__(msg)
+            try :
+                data = dict((name, localns[name]) for name in self.objnames)
+            except KeyError as excpt :
+                # would prefer if this were included in the exception, but KeyError reprs its message.
+                print 'After evaluating:\n' + self.initstring + '\n\nfailed to find key:\n' + excpt.message
+                raise excpt 
             return data
 
         def _init_string_name(self) :
@@ -143,7 +149,17 @@ def RooDataCacheFactory(attr1, *attrs) :
 
         def get_save_file(self, mode = 'read') :
             # Have to use TFile.Open to check if file exists for mass storage files.
+            # Tried to redirect stdout & stderr to avoid spurious 'file doesn't exist' warnings,
+            # but somehow they still get printed.
+            originalstderr = sys.stderr
+            originalstdout = sys.stdout
+            sys.stderr = StringIO()
+            sys.stdout = StringIO()
             savefile = TFile.Open(self.savefname, mode)
+            sys.stderr.close()
+            sys.stdout.close()
+            sys.stderr = originalstderr
+            sys.stdout = originalstdout
             if None == savefile or savefile.IsZombie() :
                 return None
             return savefile
@@ -164,8 +180,9 @@ def RooDataCacheFactory(attr1, *attrs) :
                     obj = ROOT.TNamed(savename, repr(obj))
                 obj.Write(savename, TObject.kWriteDelete + TObject.kSingleKey)
             TNamed(self._init_string_name(), self.initstring).Write(self._init_string_name(), TObject.kOverwrite)
-            if not self.fileresident :
-                savefile.Close()
+            savefile.Close()
+            if self.fileresident :
+                self._retrieve_data()
 
         def __del__(self) :
             if self.fileresident and self.datafile :
@@ -203,10 +220,15 @@ def RooScriptCacheFactory(attr1, *attrs) :
             # Or else there's snakefood which is non-SL but has the ability to filter
             # out builtin modules.
             # Can use os.path.getmtime to get the modification time of a file. 
-            with open(self.scriptname) as f :
-                self.initstring = f.read()
+
             # Bit of a nasty hack, not sure how else to do it though. 
-            sys.argv = self.args
+            self.initstring = '''import sys
+originalargs = list(sys.argv)
+sys.argv = {0!r}
+'''.format(self.args)
+            with open(self.scriptname) as f :
+                self.initstring += f.read()
+            self.initstring += '\nsys.argv = originalargs\n'
             return super(self.__class__, self)._retrieve_data()
 
     return RooScriptCache
