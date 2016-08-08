@@ -75,7 +75,7 @@ def RooDataCacheFactory(attr1, *attrs) :
             sys.stderr = originalstderr
             if 'excpt' in locals() :
                 if isinstance(excpt, SyntaxError) :
-                    tracebackerror_class = excpt.__class__.__name__
+                    error_class = excpt.__class__.__name__
                     detail = excpt.args[0]
                     line_number = excpt.lineno
                 else :
@@ -84,8 +84,11 @@ def RooDataCacheFactory(attr1, *attrs) :
                     cl, exc, tb = sys.exc_info()
                     line_number = traceback.extract_tb(tb)[-1][1]
                 msg = 'Failed to evaluate:\n' + self.initstring
-                msg += "\n%s at line %d: %s" % (error_class, line_number, detail)
-                raise excpt.__class__(msg)
+                msg += "\n{0} at line {1}: {2}".format(error_class, line_number, detail)
+                err = excpt.__class__(msg)
+                if isinstance(excpt, SyntaxError) :
+                    err.lineno = line_number
+                raise err
             try :
                 data = dict((name, localns[name]) for name in self.objnames)
             except KeyError as excpt :
