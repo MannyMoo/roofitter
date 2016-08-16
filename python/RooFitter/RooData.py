@@ -2,6 +2,7 @@ import os, sys, ROOT, traceback
 from ROOT import RooDataSet, TFile, RooArgSet, RooFit, RooCmdArg, TObject, RooRealVar, \
     TNamed
 from cStringIO import StringIO
+from Silence import Silence, TempFileRedirectOutput
 
 def RooDataCacheFactory(attr1, *attrs) :
     # So you can pass a list or tuple of attributes, or strings.
@@ -59,20 +60,12 @@ def RooDataCacheFactory(attr1, *attrs) :
             localns = dict(locals())
             if self.fileresident :
                 self.datafile = self.get_save_file('update')
-            originalstdout = sys.stdout
-            originalstderr = sys.stderr
-            sys.stdout = StringIO()
-            sys.stderr = StringIO()
-            try :
-                exec self.initstring in globals(), localns
-            except Exception as excpt :
-                pass
-            localns['stdout'] = sys.stdout.getvalue()
-            localns['stderr'] = sys.stderr.getvalue()
-            sys.stdout.close()
-            sys.stderr.close()
-            sys.stdout = originalstdout
-            sys.stderr = originalstderr
+            with TempFileRedirectOutput() as redirect :
+                try :
+                    exec self.initstring in globals(), localns
+                except Exception as excpt :
+                    pass
+            localns['stdout'], localns['stderr'] = redirect.read()
             if 'excpt' in locals() :
                 if isinstance(excpt, SyntaxError) :
                     error_class = excpt.__class__.__name__
@@ -152,17 +145,8 @@ def RooDataCacheFactory(attr1, *attrs) :
 
         def get_save_file(self, mode = 'read') :
             # Have to use TFile.Open to check if file exists for mass storage files.
-            # Tried to redirect stdout & stderr to avoid spurious 'file doesn't exist' warnings,
-            # but somehow they still get printed.
-            originalstderr = sys.stderr
-            originalstdout = sys.stdout
-            sys.stderr = StringIO()
-            sys.stdout = StringIO()
-            savefile = TFile.Open(self.savefname, mode)
-            sys.stderr.close()
-            sys.stdout.close()
-            sys.stderr = originalstderr
-            sys.stdout = originalstdout
+            with Silence() :
+                savefile = TFile.Open(self.savefname, mode)
             if None == savefile or savefile.IsZombie() :
                 return None
             return savefile
