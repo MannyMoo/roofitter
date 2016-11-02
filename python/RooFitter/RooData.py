@@ -58,11 +58,13 @@ def RooDataCacheFactory(attr1, *attrs) :
 
         def _init_data(self) :
             localns = dict(locals())
+            localns.update(globals())
             if self.fileresident :
                 self.datafile = self.get_save_file('update')
             with TempFileRedirectOutput() as redirect :
                 try :
-                    exec self.initstring in globals(), localns
+                    #exec self.initstring in globals(), localns
+                    exec self.initstring in localns
                 except Exception as excpt :
                     pass
             localns['stdout'], localns['stderr'] = redirect.read()
@@ -77,6 +79,8 @@ def RooDataCacheFactory(attr1, *attrs) :
                     cl, exc, tb = sys.exc_info()
                     line_number = traceback.extract_tb(tb)[-1][1]
                 msg = 'Failed to evaluate:\n' + self.initstring
+                msg += 'stdout:\n' + localns['stdout']
+                msg += 'stderr:\n' + localns['stderr']
                 msg += "\n{0} at line {1}: {2}".format(error_class, line_number, detail)
                 err = excpt.__class__(msg)
                 if isinstance(excpt, SyntaxError) :
@@ -138,7 +142,11 @@ def RooDataCacheFactory(attr1, *attrs) :
             self._get_data = self._return_data
             data = self._from_file()
             if not data :
-                self.update()
+                try :
+                    self.update()
+                except :
+                    self._get_data = self._retrieve_data
+                    raise
             else :
                 self._data = data
             return self._data
