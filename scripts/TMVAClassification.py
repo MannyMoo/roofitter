@@ -103,9 +103,8 @@ def main():
         sys.exit(1)
     
     # Logon not automatically loaded through PyROOT (logon loads TMVA library) load also GUI
-    gROOT.SetMacroPath( "./" )
-    gROOT.Macro       ( "./TMVAlogon.C" )    
-    gROOT.LoadMacro   ( "./TMVAGui.C" )
+    if os.path.exists('./TMVAlogon.C') :
+        gROOT.Macro       ( "./TMVAlogon.C" )    
     
     # Import TMVA classes from ROOT
     from ROOT import TMVA
@@ -134,7 +133,7 @@ def main():
     # For ROOT v6 compatibility.
     root6 = not hasattr(factory, 'AddVariable')
     if root6 :
-        dataloader = ROOT.TMVA.DataLoader('dataset')
+        dataloader = ROOT.TMVA.DataLoader('')
     else :
         dataloader = factory
 
@@ -233,8 +232,8 @@ def main():
     # used for TMVA training and testing
     # "SplitMode=Random" means that the input events are randomly shuffled before
     # splitting them into training and test samples
-    factory.PrepareTrainingAndTestTree( mycutSig, mycutBkg,
-                                        "nTrain_Signal=0:nTrain_Background=0:SplitMode=Random:NormMode=NumEvents:!V" )
+    dataloader.PrepareTrainingAndTestTree( mycutSig, mycutBkg,
+                                           "nTrain_Signal=0:nTrain_Background=0:SplitMode=Random:NormMode=NumEvents:!V" )
 
     # --------------------------------------------------------------------------------------------------
 
@@ -249,8 +248,9 @@ def main():
     if root6 :
         # Bit of an ugly hack, but does the job.
         factory._BookMethod = factory.BookMethod
-        def BookMethod(self, *args) :
-            self._BookMethod(dataloader, *args)
+        # Don't know why 'self' isn't passed here?
+        def BookMethod(*args) :
+            factory._BookMethod(dataloader, *args)
         factory.BookMethod = BookMethod
 
     if "Cuts" in mlist:
@@ -439,10 +439,19 @@ def main():
     
     # open the GUI for the result macros    
     if not ROOT.gROOT.IsBatch() :
-        try :
-            gROOT.ProcessLine( "TMVAGui(\"%s\")" % outputFile.GetName() )
-        except RuntimeError :
-            print "Couldn't run TMVAGui!"
+        if hasattr(TMVA, 'TMVAGui') :
+            TMVA.TMVAGui(outputFile.GetName())
+            raw_input('Hit enter to quit.')
+        elif 'ROOTSYS' in os.environ :
+            tmvaguipath = os.path.join(os.environ['ROOTSYS'], 'tutorials', 'tmva')
+            if os.path.exists(os.path.join(tmvaguipath, 'TMVAGui.C')) :
+                gROOT.SetMacroPath(tmvaguipath)
+                gROOT.LoadMacro   ( "TMVAGui.C" )
+                try :
+                    gROOT.ProcessLine( "TMVAGui(\"%s\")" % outputFile.GetName() )
+                    raw_input('Hit enter to quit.')
+                except RuntimeError :
+                    print "Couldn't run TMVAGui!"
 
     outputfilename = outputFile.GetName()
     weightsfiles = dict((m, os.path.join(weightsdir, args.factoryname + '_' + m + '.weights.xml')) for m in mlist)
